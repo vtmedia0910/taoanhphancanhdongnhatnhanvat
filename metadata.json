@@ -1,0 +1,5 @@
+{
+  "name": "Tạo Ảnh Đồng Nhất Nhân Vật",
+  "description": "An application to generate images from prompts, with the ability to incorporate predefined characters using reference images and UIDs. Users can manage up to 15 characters, input multiple prompts, and generate images individually or in bulk.",
+  "requestFramePermissions": []
+}
