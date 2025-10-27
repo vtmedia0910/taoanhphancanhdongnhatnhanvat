@@ -1,16 +1,6 @@
 import { GoogleGenAI, Modality } from "@google/genai";
 import type { GenerateContentResponse, Part } from "@google/genai";
 
-const API_KEY = process.env.API_KEY;
-
-if (!API_KEY) {
-  // In a real app, you'd want to handle this more gracefully.
-  // For this environment, we assume it's always available.
-  console.warn("API_KEY environment variable not set.");
-}
-
-const ai = new GoogleGenAI({ apiKey: API_KEY });
-
 // Utility to convert a data URL to a base64 string and mimeType
 const dataUrlToInfo = (dataUrl: string): { base64: string; mimeType: string } | null => {
   const match = dataUrl.match(/^data:(.+);base64,(.+)$/);
@@ -21,8 +11,15 @@ const dataUrlToInfo = (dataUrl: string): { base64: string; mimeType: string } | 
 export const generateImage = async (
   prompt: string,
   characterImages: string[],
+  apiKey: string,
   aspectRatioHint: 'landscape' | 'portrait' | 'square' = 'square'
 ): Promise<string> => {
+  if (!apiKey) {
+    throw new Error("Gemini API Key is not configured. Please enter and save your API key.");
+  }
+  
+  const ai = new GoogleGenAI({ apiKey });
+
   try {
     let finalPrompt = prompt;
     // Be more specific with the prompt to better guide the model.
@@ -68,6 +65,9 @@ export const generateImage = async (
 
   } catch (error) {
     console.error("Error generating image:", error);
+    if (error instanceof Error && error.message.includes('API key not valid')) {
+        throw new Error("Your API Key is not valid. Please check and save it again.");
+    }
     throw new Error("Failed to generate image. Please check the console for details.");
   }
 };

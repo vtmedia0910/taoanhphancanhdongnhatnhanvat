@@ -6,6 +6,8 @@ import { generateImage } from './services/geminiService';
 
 const NUM_CHARACTER_SLOTS = 15;
 const CHARACTERS_STORAGE_KEY = 'gemini-character-generator-characters';
+const API_KEY_STORAGE_KEY = 'gemini-character-generator-api-key';
+
 
 const initialCharacters = Array.from({ length: NUM_CHARACTER_SLOTS }, (_, i) => ({
   id: i,
@@ -69,11 +71,18 @@ const StopIcon: React.FC<{className?: string}> = ({ className }) => (
     </svg>
 );
 
+const KeyIcon: React.FC<{className?: string}> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 5.25a3 3 0 0 1 3 3m3 0a6 6 0 0 1-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1 1 21.75 8.25Z" />
+    </svg>
+);
+
 
 const App: React.FC = () => {
   const [characters, setCharacters] = useState<Character[]>(loadCharactersFromStorage);
   const [rawPrompts, setRawPrompts] = useState<string>('');
   const [imageSlots, setImageSlots] = useState<ImageSlotData[]>([]);
+  const [apiKey, setApiKey] = useState<string>(() => window.localStorage.getItem(API_KEY_STORAGE_KEY) || '');
   const [isGeneratingAll, setIsGeneratingAll] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [generationStatus, setGenerationStatus] = useState('');
@@ -128,6 +137,10 @@ const App: React.FC = () => {
   }, []);
 
   const handleGenerate = useCallback(async (slotId: number): Promise<void> => {
+    if (!apiKey.trim()) {
+        alert("Vui lòng nhập và lưu API Key của bạn trước khi tạo ảnh.");
+        return;
+    }
     const slot = imageSlots.find(s => s.id === slotId);
     if (!slot || !slot.prompt || slot.isLoading) return;
 
@@ -156,19 +169,29 @@ const App: React.FC = () => {
         }
       }
 
-      const imageUrl = await generateImage(slot.prompt, characterImages, aspectRatioHint);
+      const imageUrl = await generateImage(slot.prompt, characterImages, apiKey, aspectRatioHint);
       setImageSlots(prev => prev.map(s => s.id === slotId ? { ...s, imageUrl, isLoading: false } : s));
     } catch (error) {
       alert((error as Error).message);
       setImageSlots(prev => prev.map(s => s.id === slotId ? { ...s, isLoading: false } : s));
       throw error; // Re-throw to be caught by the bulk generator
     }
-  }, [imageSlots, characters]);
+  }, [imageSlots, characters, apiKey]);
+  
+  const handleSaveApiKey = () => {
+    window.localStorage.setItem(API_KEY_STORAGE_KEY, apiKey);
+    alert('API Key đã được lưu thành công!');
+  };
 
   const handleGenerateAll = async () => {
+    if (!apiKey.trim()) {
+        alert("Vui lòng nhập và lưu API Key của bạn trước khi tạo ảnh.");
+        return;
+    }
+
     const slotsToGenerate = imageSlots.filter(slot => slot.prompt && !slot.imageUrl);
     if (slotsToGenerate.length === 0) {
-      alert("No prompts to generate images for.");
+      alert("Không có prompt nào để tạo ảnh.");
       return;
     }
 
@@ -259,18 +282,36 @@ const App: React.FC = () => {
     }
   };
   
-  const handleSaveAll = () => {
-    imageSlots.forEach(slot => {
-      if (slot.imageUrl) {
-        handleSave(slot.id);
-      }
-    });
+  const handleSaveAll = async () => {
+    const slotsToSave = imageSlots.filter(slot => slot.imageUrl);
+    if (slotsToSave.length === 0) {
+      alert("Không có ảnh nào để lưu.");
+      return;
+    }
+
+    setIsGeneratingAll(true); // Reuse this state to disable buttons during save
+    setGenerationStatus('Đang chuẩn bị lưu...');
+
+    for (let i = 0; i < slotsToSave.length; i++) {
+      const slot = slotsToSave[i];
+      setGenerationStatus(`Đang lưu ảnh ${i + 1} trên ${slotsToSave.length}...`);
+      handleSave(slot.id);
+      // Add a delay to prevent browsers from blocking multiple rapid downloads
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+
+    setGenerationStatus('Đã lưu tất cả ảnh thành công!');
+    setTimeout(() => {
+      setGenerationStatus('');
+      setIsGeneratingAll(false);
+    }, 5000);
   };
 
   const handleResetAllData = useCallback(() => {
     if (window.confirm('Are you sure you want to delete all characters, prompts, and generated images? This action cannot be undone.')) {
       setCharacters(initialCharacters);
       setRawPrompts('');
+      setImageSlots([]);
     }
   }, []);
 
@@ -289,8 +330,30 @@ const App: React.FC = () => {
         {/* Control Panel */}
         <div className="w-full lg:w-1/3 xl:w-1/4 flex-shrink-0 flex flex-col gap-4 bg-gray-800/50 p-4 rounded-xl shadow-lg overflow-y-auto">
           <div>
+            <h2 className="text-xl font-semibold mb-3 border-b border-gray-600 pb-2 flex items-center gap-2"><KeyIcon className="w-5 h-5"/> API Key</h2>
+            <div className='space-y-2'>
+              <input
+                type="password"
+                placeholder="Nhập Gemini API Key của bạn"
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                className="w-full bg-gray-900 border border-gray-600 rounded-md p-2 text-sm text-white placeholder-gray-500 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition"
+                />
+              <button
+                onClick={handleSaveApiKey}
+                className="w-full px-4 py-2 text-sm font-semibold text-white bg-indigo-600 rounded-md hover:bg-indigo-500 transition-colors shadow-md"
+                >
+                Lưu Key
+              </button>
+              <p className="text-xs text-gray-500 text-center">Key của bạn được lưu an toàn trong bộ nhớ cục bộ của trình duyệt.</p>
+              <p className="text-xs text-gray-500 text-center">
+                Nếu chưa có API Key hãy tạo <a href="https://aistudio.google.com/app/api-keys" target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:underline">tại đây</a>.
+              </p>
+            </div>
+          </div>
+          <div className="mt-4">
             <h2 className="text-xl font-semibold mb-3 border-b border-gray-600 pb-2">Characters ({characters.filter(c=>c.uid && c.image).length}/{NUM_CHARACTER_SLOTS})</h2>
-            <div className="space-y-3 max-h-64 lg:max-h-[calc(50vh-100px)] overflow-y-auto pr-2">
+            <div className="space-y-3 max-h-64 lg:max-h-[calc(50vh-150px)] overflow-y-auto pr-2">
               {characters.map(char => (
                 <CharacterSlot key={char.id} character={char} onUpdate={handleCharacterUpdate} />
               ))}
@@ -302,7 +365,7 @@ const App: React.FC = () => {
               value={rawPrompts}
               onChange={(e) => setRawPrompts(e.target.value)}
               placeholder="Enter one prompt per scene. Separate scenes with a blank line..."
-              className="w-full h-48 lg:h-[calc(50vh-100px)] bg-gray-900 border border-gray-600 rounded-md p-3 text-sm text-gray-200 placeholder-gray-500 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition resize-none"
+              className="w-full h-48 lg:h-[calc(50vh-150px)] bg-gray-900 border border-gray-600 rounded-md p-3 text-sm text-gray-200 placeholder-gray-500 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition resize-none"
             />
           </div>
           <div className="mt-auto pt-4 border-t border-gray-700">
